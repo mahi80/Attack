@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.4",
-    "@xyflow/react": "^12.10.1",
+    "@xyflow/react": "^13.0.1",
     "clsx": "^2.1.1",
     "diff": "^8.0.3",
     "highlight.js": "^11.11.1",
