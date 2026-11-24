@@ -64,6 +64,7 @@ Additional commands:
   strix cloud ...          Use the managed Strix platform
   strix auth ...           Manage model-subscription sign-in
   strix view [RUN]         View a completed or running scan
+  strix siem ...           Attribute findings to your SIEM detections
   strix completions SHELL  Generate zsh, bash, or fish tab completion
 """
 
@@ -468,6 +469,13 @@ def main() -> None:
         from strix.interface.cloud import run_cloud
 
         sys.exit(run_cloud(sys.argv[2:]))
+
+    # `strix siem …` attributes a finished run's findings to SIEM detections;
+    # it reads artifacts already on disk and never needs a target or Docker.
+    if len(sys.argv) > 1 and sys.argv[1] == "siem":
+        from strix.interface.siem_cli import run_siem
+
+        sys.exit(run_siem(sys.argv[2:]))
 
     start_import_warmup()
 

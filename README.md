@@ -207,7 +207,22 @@ The dashboard shows the findings, a live map of the agent team, and past runs. N
 
 See the [viewer documentation](https://docs.strix.ai/usage/viewer) for the options and for reaching the viewer from another machine.
 
+## 📊 SIEM Detection Attribution
+
+Strix proves a finding is exploitable; `strix siem` tells you whether your *detections* saw it. Every adapter is read-only — search requests only, matching on both the time window and the endpoint, with unmatched events counted instead of assigned to the nearest class.
+
+```bash
+# Splunk, Elastic, Sentinel (Log Analytics), or a local JSONL export
+strix siem --run latest --detector 'splunk://user:pw@siem:8089?index=main' --write
+strix siem --detector jsonl:///var/log/export/events.jsonl --fail-on-blind
+```
+
+`--write` adds `siem_attribution.{json,md}` to the run: a per-class table of which rules fired, the classes no rule named, and the findings nothing saw. `--fail-on-blind` exits 3 when a class had findings and no named rule covered it, so coverage debt can gate a pipeline.
+
+See the [SIEM attribution documentation](docs/integrations/siem-attribution.mdx) for DSNs, matching rules and the limits.
+
 ---
+
 
 ## Usage Examples
 

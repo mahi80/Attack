@@ -1,0 +1,115 @@
+---
+title: "SIEM Detection Attribution"
+description: "Attribute a finished scan's findings to the detections that saw them"
+---
+
+Strix proves that a vulnerability is exploitable. It cannot tell you whether your *detections* noticed. `strix siem` answers the other half of the question: for every finding a run filed, did a rule see it, which rule, and how long after the attack began.
+
+The output is a coverage scorecard, not a vulnerability report:
+
+- **Per class**: how many findings, how many a detector saw, and the rule names that fired.
+- **Blind spots**: classes where findings were filed but no named rule covered them.
+- **Silent classes**: classes no detector saw at all.
+- **Unattributed findings**: filed findings whose exploitation produced no matching event.
+- **Unmatched events**: detections inside the window that belong to no finding. Counted, never assigned to the nearest class.
+
+## Usage
+
+```bash
+# Attribute the most recent run against a Splunk index
+strix siem --run latest --detector 'splunk://user:pw@siem.internal:8089?index=main' --write
+
+# Elastic, one index or a wildcard
+strix siem --detector 'elastic://user:pw@es.internal:9200/winlogbeat-*' --write
+
+# Microsoft Sentinel (Log Analytics), token in $SENTINEL_TOKEN
+export SENTINEL_TOKEN=...
+strix siem --detector 'sentinel://WORKSPACE_ID?table=SigninLogs&query=UserPrincipalName has "app"' --write
+
+# Replay an exported JSONL file — no network, good for CI and for tuning rules
+strix siem --detector jsonl:///var/log/export/events.jsonl --window 900 --write
+
+# Gate a pipeline: exit 3 when a class had findings and no named rule covered it
+strix siem --detector jsonl://$PWD/events.jsonl --fail-on-blind
+```
+
+`--write` adds two files to the run directory, next to `vulnerabilities.json`:
+
+| File | Contents |
+| --- | --- |
+| `siem_attribution.json` | Every attribution, the class table, and both blind-spot lists |
+| `siem_attribution.md` | The human-readable section, ready to paste into a report |
+
+`--json PATH` and `--md PATH` write the artifacts elsewhere instead.
+
+## How matching works
+
+Each finding is anchored on the timestamp it was filed. A detector event is
+attributed to it only when **both** hold:
+
+1. the event falls inside `±window` seconds of the anchor (default 600), and
+2. the endpoint matches — host and path when the event carries both, host alone
+   when it carries no path.
+
+A missing host or path is never treated as a wildcard, and there is no
+nearest-class fallback: an event that fails either test is counted as unmatched,
+and the finding is reported as unattributed. That is deliberate — a coverage
+number you cannot trust is worse than a low one.
+
+Findings with no parseable timestamp are counted as **unanchored** rather than
+being dropped or squeezed into the run's overall window.
+
+Only the first request of an attack is needed for a rule to fire, so the
+reported `latency_ms` is the time from the finding's anchor to the earliest
+matching event. A negative value means the detector fired before the filing
+timestamp, which usually means the anchor is loose (see below).
+
+## Adapters
+
+| Scheme | Requests used | Read-only guarantee |
+| --- | --- | --- |
+| `splunk://` | `POST /services/search/jobs/export` | Only the export endpoint; a DSN carrying any other path is refused |
+| `elastic://` | `POST /{index}/_search` | Path must end in `/_search` or `/_count` |
+| `sentinel://` | `POST /v1/workspaces/{id}/query` | Single query endpoint; table and filter clause are guarded |
+| `jsonl://` | none | Local file, filtered in process |
+
+Every request is checked before it is built: only `GET` and `POST` are allowed,
+and any path or body containing a mutating fragment (`_bulk`, `_update_by_query`,
+`_delete_by_query`, `_reindex`, `_snapshot`, `_scripts`, `/services/auth`,
+`/services/admin`, `_security`, and similar) is refused with `SiemReadOnlyError`.
+Credentials in a DSN are redacted to `user:***@host` in every artifact and log
+line this feature writes.
+
+`jsonl://` expects one JSON object per line with any of the usual field names:
+`_time` / `@timestamp` / `TimeGenerated`, `rule_name` / `rule.name` /
+`search_name` / `detection_rule`, `host` / `host.name` / `url.host`, and
+`url.path` / `request.uri` / `path`.
+
+## Known limits
+
+- **The anchor is the filing time, not the packet time.** Strix stores proxy
+  exchange IDs for every finding, but not their timestamps, so attribution uses
+  the moment the finding was filed. Keep the window wide enough to cover the
+  time between the exploit request and the agent writing it up; `--window 900`
+  is a reasonable default for slow models.
+- **Event caps.** Each detector returns at most `--max-events` events (default
+  5000) for the whole run's window. A very noisy index will hit the cap and the
+  match set will be partial; the count in the report is what was actually
+  fetched.
+- **Rule names are whatever the store returns.** An event with no rule field is
+  reported as `unnamed`: it counts as having seen the finding, because the
+  detection fired, but it cannot clear a class from the blind-spot list.
+
+## CI
+
+```yaml
+- name: SIEM attribution
+  run: |
+    strix siem --run latest \
+      --detector "elastic://${{ secrets.ES_USER }}:${{ secrets.ES_PW }}@es:9200/winlogbeat-*" \
+      --write --fail-on-blind
+```
+
+The scan exits non-zero only for detector or input errors. `--fail-on-blind`
+returns 3 when at least one class had findings and no named rule covered it, which
+is the number a detection-engineering review actually wants to move down.

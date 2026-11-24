@@ -1,0 +1,22 @@
+Strix
+Copyright 2025-2026 Strix AI
+
+This distribution is a modified copy of the Strix project
+(https://github.com/usestrix/strix), licensed under the Apache License 2.0.
+See LICENSE for the full license text.
+
+Modifications in this distribution, relative to upstream Strix:
+
+  1. Added read-only SIEM detection attribution (`strix siem`):
+     strix/report/siem.py, strix/interface/siem_cli.py, and the `siem`
+     subcommand dispatch in strix/interface/main.py.
+  2. Added tests for the above (tests/test_siem_attribution.py).
+  3. Added documentation (docs/integrations/siem-attribution.mdx,
+     docs/PORTED_FROM_PENTESTINGTOOL.md) and a README section.
+
+The SIEM attribution design was informed by reading mahi80/pentestingtool,
+which carries no license; no source code from that project was copied. The
+implementation here is original and written against Strix's own data model.
+
+This distribution is not affiliated with, sponsored by, or endorsed by Strix AI.
+"Strix" is used only to identify the origin of the code.
